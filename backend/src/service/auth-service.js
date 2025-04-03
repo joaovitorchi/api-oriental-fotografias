@@ -1,44 +1,85 @@
-const jwt = require("jsonwebtoken");
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const UserRepository = require('../repositories/user.repository');
+const logger = require('../utils/logger');
+const { UnauthorizedError, ValidationError } = require('../utils/errors');
 
 class AuthService {
-  generateToken(user) {
-    return jwt.sign({
+  constructor() {
+    this.userRepository = new UserRepository();
+    this.jwtSecret = process.env.JWT_SECRET;
+    this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '7d';
+  }
+
+  async login(email, password) {
+    const user = await this.userRepository.findByEmail(email);
+    
+    if (!user || !user.active) {
+      throw new UnauthorizedError('Credenciais inválidas');
+    }
+
+    const isValidPassword = user.comparePassword(password);
+    if (!isValidPassword) {
+      throw new UnauthorizedError('Credenciais inválidas');
+    }
+
+    await this.userRepository.updateLastLogin(user.userId);
+
+    const token = this.generateToken({
       userId: user.userId,
-      permissions: user.permissions,
-      name: user.name,
-    }, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN,
+      role: user.role,
+      email: user.email
+    });
+
+    return {
+      user: {
+        userId: user.userId,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        profilePhoto: user.profilePhoto
+      },
+      token
+    };
+  }
+
+  generateToken(payload) {
+    return jwt.sign(payload, this.jwtSecret, { expiresIn: this.jwtExpiresIn });
+  }
+
+  verifyToken(token) {
+    try {
+      return jwt.verify(token, this.jwtSecret);
+    } catch (error) {
+      logger.error(`Token verification failed: ${error.message}`);
+      throw new UnauthorizedError('Token inválido ou expirado');
+    }
+  }
+
+  async refreshToken(userId) {
+    const user = await this.userRepository.findById(userId);
+    if (!user) {
+      throw new UnauthorizedError('Usuário não encontrado');
+    }
+
+    return this.generateToken({
+      userId: user.userId,
+      role: user.role,
+      email: user.email
     });
   }
 
-  verifyJWT(token) {
-    try {
-      return jwt.verify(token, process.env.JWT_SECRET);
-    } catch (error) {
-      return { error: "Token Inválido." };
+  async changePassword(userId, currentPassword, newPassword) {
+    const user = await this.userRepository.findById(userId);
+    
+    if (!user.comparePassword(currentPassword)) {
+      throw new ValidationError('Senha atual incorreta');
     }
-  }
 
-  getIdUser(req) {
-    const token = req.headers["authorization"];
-
-    if (!token) {
-      throw new Error('Usuário não encontrado.');
-    }
-    const tokenWithBearerPrefix = token.substr(7);
-    const decoded = new AuthService().verifyJWT(tokenWithBearerPrefix);
-    return decoded.userId;
-  }
-
-  getPermissions(req) {
-    const token = req.headers["authorization"];
-
-    if (!token) {
-      throw new Error('Usuário não encontrado.');
-    }
-    const tokenWithBearerPrefix = token.substr(7);
-    const decoded = new AuthService().verifyJWT(tokenWithBearerPrefix);
-    return decoded.permissions;
+    user.encryptPassword(newPassword);
+    await this.userRepository.update(user);
+    
+    return { success: true };
   }
 }
 

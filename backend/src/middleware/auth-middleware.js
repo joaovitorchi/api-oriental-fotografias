@@ -1,50 +1,119 @@
 const authService = require("../service/auth-service");
+const UserRepository = require("../repositories/user-repository");
 const logger = require("../utils/logger");
 
-const middlewareAuthorization = function (permissionsNeeded = []) {
-  if (typeof permissionsNeeded === "string") {
-    permissionsNeeded = [permissionsNeeded];
+class AuthorizationMiddleware {
+  constructor() {
+    this.userRepository = new UserRepository();
+    
+    // Bind methods to maintain 'this' context
+    this.verifyToken = this.verifyToken.bind(this);
+    this.checkPermissions = this.checkPermissions.bind(this);
+    this.middleware = this.middleware.bind(this);
   }
-  return async (req, res, next) => {
-    const token = req.headers["authorization"];
 
-    if (!token) {
-
-      logger.error(__filename + " Falha - sem token");
-      return res
-        .status(401)
-        .send({ auth: false, message: "Sem Token.", errors: { msg: "Sem Token" } });
+  /**
+   * Verify JWT token
+   * @param {string} token 
+   * @returns {Promise<{userId: number, permissions: string[]}|{err: Error}>}
+   */
+  async verifyToken(token) {
+    try {
+      if (!token) {
+        throw new Error("Token não fornecido");
+      }
+      
+      // Remove 'Bearer ' prefix if present
+      const tokenWithoutPrefix = token.startsWith('Bearer ') ? token.substr(7) : token;
+      return authService.verifyJWT(tokenWithoutPrefix);
+    } catch (error) {
+      logger.error(__filename + " - Falha ao verificar token: " + error.message);
+      return { err: error };
     }
-    const tokenWithBearerPrefix = token.substr(7);
-    const decoded = authService.verifyJWT(tokenWithBearerPrefix);
+  }
 
-    if (decoded.err) {
-      logger.error(__filename + " Falha ao autenticar o token [" + token + "] - " + decoded.err);
-      return res
-        .status(401)
-        .send({ auth: false, message: "Falha ao autenticar o Token. Precisa fazer login." });
-    }
+  /**
+   * Check if user has required permissions
+   * @param {string[]} userPermissions 
+   * @param {string|string[]} requiredPermissions 
+   * @returns {boolean}
+   */
+  checkPermissions(userPermissions = [], requiredPermissions = []) {
+    if (!requiredPermissions.length) return true;
+    
+    const required = Array.isArray(requiredPermissions) ? requiredPermissions : [requiredPermissions];
+    return required.some(perm => userPermissions.includes(perm));
+  }
 
-    req.user = { userId: decoded.userId, permissions: decoded.permissions };
+  /**
+   * Main middleware function
+   * @param {string|string[]} permissionsNeeded 
+   * @returns {Function}
+   */
+  middleware(permissionsNeeded = []) {
+    return async (req, res, next) => {
+      try {
+        // 1. Get token from headers
+        const token = req.headers.authorization;
+        
+        // 2. Verify token
+        const decoded = await this.verifyToken(token);
+        if (decoded.err) {
+          logger.error(`${__filename} - Token inválido: ${token}`);
+          return res.status(401).json({ 
+            auth: false, 
+            message: "Falha na autenticação",
+            errors: [{ msg: "Token inválido ou expirado" }] 
+          });
+        }
 
-    if (!req.user || !req.user.permissions || !Array.isArray(req.user.permissions)) {
+        // 3. Get fresh user data from database
+        const user = await this.userRepository.findById(decoded.userId);
+        if (!user || !user.active) {
+          logger.error(`${__filename} - Usuário não encontrado ou inativo: ${decoded.userId}`);
+          return res.status(401).json({ 
+            message: "Acesso não autorizado",
+            errors: [{ msg: "Conta inativa ou não existente" }] 
+          });
+        }
 
-      logger.error(`Falha, usuário sem permissões: ${req.user.userId} path ${req.originalUrl}`)
-      return res.status(401).json({ message: "Sem permissão", errors: [{ msg: "Sem Permissão" }] });
-    }
+        // 4. Load user permissions
+        await user.loadPermissions();
+        await user.loadAdditionalPermissions();
+        const allPermissions = [...user.permissions, ...user.additionalPermissions];
 
-    var intersectionpermissions = permissionsNeeded.filter((x) => req.user.permissions.includes(x));
+        // 5. Check permissions
+        if (!this.checkPermissions(allPermissions, permissionsNeeded)) {
+          logger.error(`Acesso negado para usuário ${user.userId} (${user.email}) em ${req.method} ${req.originalUrl}`);
+          logger.debug(`Permissões necessárias: ${JSON.stringify(permissionsNeeded)}`);
+          logger.debug(`Permissões do usuário: ${JSON.stringify(allPermissions)}`);
+          return res.status(403).json({ 
+            message: "Acesso proibido",
+            errors: [{ msg: "Permissões insuficientes" }] 
+          });
+        }
 
-    if (permissionsNeeded.length && intersectionpermissions.length == 0) {
+        // 6. Attach user to request
+        req.user = {
+          userId: user.userId,
+          email: user.email,
+          role: user.role,
+          name: user.name,
+          permissions: allPermissions
+        };
 
-      logger.error(`Falha, usuário (${req.user.userId}) sem permissão para acessar o path: ${req.originalUrl}`)
-      logger.error(`Permissões necessárias:${JSON.stringify(permissionsNeeded)}; permissões usuário: ${JSON.stringify(req.user.permissions)}`);
+        // 7. Proceed to next middleware
+        next();
+      } catch (error) {
+        logger.error(`${__filename} - Erro no middleware de autorização: ${error.message}`);
+        return res.status(500).json({ 
+          message: "Erro interno no servidor",
+          errors: [{ msg: "Falha ao processar autorização" }] 
+        });
+      }
+    };
+  }
+}
 
-      return res.status(401).json({ message: "Sem permissão", errors: [{ msg: "Sem Permissão" }] });
-    }
-
-    next();
-  };
-};
-
-module.exports = middlewareAuthorization;
+// Export singleton instance
+module.exports = new AuthorizationMiddleware().middleware;
