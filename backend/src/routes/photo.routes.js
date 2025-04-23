@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const photoController = require('../controllers/photo.controller');
+const PhotoController = require('../controllers/photo.controller');
+const photoController = new PhotoController();
 const authMiddleware = require('../middlewares/auth.middleware');
 const upload = require('../config/multer.config');
 const validator = require('../middlewares/validator.middleware');
@@ -12,30 +13,30 @@ router.get('/:id', photoController.getPhotoById);
 
 // Rotas autenticadas
 router.post(
-  '/upload', 
-  authMiddleware(),  // Aplica autenticação apenas aqui
-  upload.single('photo'), 
+  '/upload',
+  authMiddleware(),
+  upload.single('photo'),
   validator(photoSchema),
-  photoController.uploadPhoto
+  photoController.upload
 );
 
 router.put(
-  '/:id', 
-  authMiddleware(),  // Aplica autenticação aqui também
+  '/:id',
+  authMiddleware(),
   validator(photoSchema),
-  photoController.updatePhoto
+  photoController.update
 );
 
 router.delete(
-  '/:id', 
-  authMiddleware(),  // Aplica autenticação para deletar
-  photoController.deletePhoto
+  '/:id',
+  authMiddleware(),
+  photoController.delete
 );
 
 // Rotas para downloads
 router.get(
-  '/:id/download', 
-  photoController.downloadPhoto
+  '/:id/download',
+  photoController.download
 );
 
 module.exports = router;
