@@ -20,12 +20,8 @@ router.post(
   photoController.upload
 );
 
-router.put(
-  '/:id',
-  authMiddleware(),
-  validator(photoSchema),
-  photoController.update
-);
+router.put('/:id', validator(photoSchema), photoController.update);
+
 
 router.delete(
   '/:id',
