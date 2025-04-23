@@ -10,13 +10,13 @@ const corsMiddleware = require('./middlewares/cors.middleware');
 const compressionMiddleware = require('./middlewares/compression.middleware');
 
 // Aplicar middlewares globais
-app.use(express.json());
-app.use(corsMiddleware());
-app.use(compressionMiddleware());
-app.use(loggerMiddleware());
+app.use(express.json());          // Express JSON body parser
+app.use(corsMiddleware);          // Middleware de CORS (sem os parênteses)
+app.use(compressionMiddleware);   // Middleware de compressão (sem os parênteses)
+app.use(loggerMiddleware);        // Middleware de log (sem os parênteses)
 
-// Rotas com autenticação
-app.use('/api', authMiddleware(), require('./routes'));
+// Rota protegida com autenticação
+app.use('/api', authMiddleware, require('./routes'));  // Middleware de autenticação sem parênteses
 
 // Middleware de erro (deve ser o último)
 app.use(errorHandler);

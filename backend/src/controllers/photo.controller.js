@@ -24,7 +24,7 @@ class PhotoController {
         photo
       });
     } catch (error) {
-      logger.error(`Upload photo failed: ${error.message}`);
+      logger.error(`Upload photo failed for user ${req.user.userId}: ${error.message}`);
       next(error);
     }
   }
@@ -33,15 +33,20 @@ class PhotoController {
     try {
       const photo = await photoService.getPhotoById(req.params.id);
       
-      // Aqui você pode adicionar verificação de permissões
-      // se necessário (ex: se a foto pertence a um álbum/sessão do usuário)
+      // Adicionar lógica para verificar se o usuário tem permissão
+      if (photo.userId !== req.user.userId && !req.user.hasPermission('view_all_photos')) {
+        return res.status(403).json({
+          success: false,
+          message: 'Você não tem permissão para visualizar esta foto'
+        });
+      }
 
       res.json({
         success: true,
         photo
       });
     } catch (error) {
-      logger.error(`Get photo failed: ${error.message}`);
+      logger.error(`Get photo failed for user ${req.user.userId}: ${error.message}`);
       next(error);
     }
   }
@@ -49,12 +54,21 @@ class PhotoController {
   async getSessionPhotos(req, res, next) {
     try {
       const photos = await photoService.getSessionPhotos(req.params.sessionId);
+
+      // Verificar se o usuário tem permissão para acessar as fotos da sessão
+      if (!photos.some(photo => photo.userId === req.user.userId || req.user.hasPermission('view_all_photos'))) {
+        return res.status(403).json({
+          success: false,
+          message: 'Você não tem permissão para visualizar as fotos desta sessão'
+        });
+      }
+
       res.json({
         success: true,
         photos
       });
     } catch (error) {
-      logger.error(`Get session photos failed: ${error.message}`);
+      logger.error(`Get session photos failed for user ${req.user.userId}: ${error.message}`);
       next(error);
     }
   }
@@ -72,18 +86,34 @@ class PhotoController {
         req.body
       );
 
+      if (photo.userId !== req.user.userId && !req.user.hasPermission('update_all_photos')) {
+        return res.status(403).json({
+          success: false,
+          message: 'Você não tem permissão para atualizar esta foto'
+        });
+      }
+
       res.json({
         success: true,
         photo
       });
     } catch (error) {
-      logger.error(`Update photo failed: ${error.message}`);
+      logger.error(`Update photo failed for user ${req.user.userId}: ${error.message}`);
       next(error);
     }
   }
 
   async delete(req, res, next) {
     try {
+      const photo = await photoService.getPhotoById(req.params.id);
+
+      if (photo.userId !== req.user.userId && !req.user.hasPermission('delete_all_photos')) {
+        return res.status(403).json({
+          success: false,
+          message: 'Você não tem permissão para excluir esta foto'
+        });
+      }
+
       await photoService.deletePhoto(
         req.user.userId,
         req.params.id
@@ -94,7 +124,7 @@ class PhotoController {
         message: 'Foto excluída com sucesso'
       });
     } catch (error) {
-      logger.error(`Delete photo failed: ${error.message}`);
+      logger.error(`Delete photo failed for user ${req.user.userId}: ${error.message}`);
       next(error);
     }
   }

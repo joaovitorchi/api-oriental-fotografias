@@ -1,5 +1,5 @@
 const bcrypt = require("bcryptjs");
-const PermissionRepository = require("../repository/permission-repository");
+const PermissionRepository = require("../repositories/permission.repository");
 const { whereAndStackError } = require("../utils/where-and-stack-error");
 const logger = require("../utils/logger");
 
@@ -171,7 +171,7 @@ class User {
 
   canEditSession(sessionId) {
     return this.hasPermission('manage_sessions') || 
-           (this.hasPermission('edit_own_sessions') && /* verifica se é dono da sessão */);
+           (this.hasPermission('edit_own_sessions'));
   }
 
   canPublishContent() {

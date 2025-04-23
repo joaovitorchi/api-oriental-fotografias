@@ -15,7 +15,7 @@ function Illustration(): JSX.Element {
   const [rememberMe, setRememberMe] = useState<boolean>(false);
   const [user, setUser] = useState({});
   const handleSetRememberMe = () => setRememberMe(!rememberMe);
-  const [credentialsErros, setCredentialsError] = useState(null);
+  const [credentialsErros, setCredentialsError] = useState<string | null>(null);
 
   const [inputs, setInputs] = useState({
     email: "",
@@ -26,6 +26,7 @@ function Illustration(): JSX.Element {
     emailError: false,
     passwordError: false,
   });
+
   const addUserHandler = (newUser: any) => setUser(newUser);
 
   const changeHandler = (e: any) => {
@@ -36,7 +37,6 @@ function Illustration(): JSX.Element {
   };
 
   const submitHandler = async (e: any) => {
-    // check rememeber me?
     e.preventDefault();
 
     const mailFormat = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
@@ -58,20 +58,26 @@ function Illustration(): JSX.Element {
       const response = await authService.login(newUser);
       authContext.login(response.token);
     } catch (res: any) {
-      setCredentialsError(res.errors.map((e: { msg: string }) => e.msg).join(", "));
+      if (Array.isArray(res?.errors)) {
+        setCredentialsError(res.errors.map((e: { msg: string }) => e.msg).join(", "));
+      } else if (res?.message) {
+        setCredentialsError(res.message);
+      } else {
+        setCredentialsError("Erro inesperado ao fazer login.");
+        console.error("Erro de login:", res);
+      }
     }
 
-    return () => {
-      setInputs({
-        email: "",
-        password: "",
-      });
+    // Resetar formulário após tentativa
+    setInputs({
+      email: "",
+      password: "",
+    });
 
-      setErrors({
-        emailError: false,
-        passwordError: false,
-      });
-    };
+    setErrors({
+      emailError: false,
+      passwordError: false,
+    });
   };
 
   return (

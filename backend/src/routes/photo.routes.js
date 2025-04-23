@@ -13,7 +13,7 @@ router.get('/:id', photoController.getPhotoById);
 // Rotas autenticadas
 router.post(
   '/upload', 
-  authMiddleware(),
+  authMiddleware(),  // Aplica autenticação apenas aqui
   upload.single('photo'), 
   validator(photoSchema),
   photoController.uploadPhoto
@@ -21,21 +21,20 @@ router.post(
 
 router.put(
   '/:id', 
-  authMiddleware(),
+  authMiddleware(),  // Aplica autenticação aqui também
   validator(photoSchema),
   photoController.updatePhoto
 );
 
 router.delete(
   '/:id', 
-  authMiddleware(),
+  authMiddleware(),  // Aplica autenticação para deletar
   photoController.deletePhoto
 );
 
 // Rotas para downloads
 router.get(
   '/:id/download', 
-  authMiddleware(),
   photoController.downloadPhoto
 );
 
