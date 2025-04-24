@@ -1,5 +1,5 @@
 const BaseRepository = require('./base.repository');
-const { Category } = require('../models');
+const { Category } = require('../models/category.model');
 
 class CategoryRepository extends BaseRepository {
   constructor() {

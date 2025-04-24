@@ -1,105 +1,123 @@
-const PhotoRepository = require('../repositories/photo.repository');
-const SessionRepository = require('../repositories/session.repository');
-const StorageService = require('./storage.service');
+const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const sharp = require('sharp');
 const logger = require('../utils/logger');
-const { NotFoundError, ValidationError } = require('../utils/errors');
+const { StorageError } = require('../utils/errors');
 
-class PhotoService {
+// Classe para gerenciar o serviço de armazenamento (AWS S3)
+class StorageService {
   constructor() {
-    this.photoRepository = new PhotoRepository();
-    this.sessionRepository = new SessionRepository();
-    this.storageService = new StorageService();
-  }
-
-  async uploadPhoto(userId, sessionId, file, metadata) {
-    // Verifica se a sessão existe e pertence ao usuário
-    const session = await this.sessionRepository.findById(sessionId);
-    if (!session) {
-      throw new NotFoundError('Sessão não encontrada');
-    }
-
-    if (session.createdBy !== userId) {
-      throw new UnauthorizedError('Você não tem permissão para adicionar fotos a esta sessão');
-    }
-
-    // Faz upload para o storage (S3, Google Cloud, etc)
-    const uploadResult = await this.storageService.upload(file, {
-      folder: `sessions/${sessionId}`,
-      metadata
+    // Inicializa o cliente S3
+    this.s3Client = new S3Client({
+      region: process.env.AWS_REGION,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY,
+        secretAccessKey: process.env.AWS_SECRET_KEY
+      }
     });
-
-    // Salva no banco de dados
-    const photoData = {
-      sessionId,
-      photoUrl: uploadResult.url,
-      thumbnailUrl: uploadResult.thumbnailUrl,
-      metadata: uploadResult.metadata,
-      width: uploadResult.width,
-      height: uploadResult.height,
-      fileSize: uploadResult.size,
-      fileType: uploadResult.type
-    };
-
-    const photo = await this.photoRepository.create(photoData);
-
-    // Atualiza a sessão com a foto de capa se necessário
-    if (!session.coverPhotoUrl) {
-      await this.sessionRepository.update(sessionId, { coverPhotoUrl: uploadResult.url });
-    }
-
-    return photo;
+    this.bucketName = process.env.S3_BUCKET_NAME;
   }
 
-  async getPhotoById(photoId) {
-    const photo = await this.photoRepository.findById(photoId);
-    if (!photo) {
-      throw new NotFoundError('Foto não encontrada');
+  /**
+   * Faz o upload do arquivo para o S3 e gera uma thumbnail (se for uma imagem).
+   * @param {Object} file - O arquivo a ser enviado.
+   * @param {Object} options - Opções adicionais como pasta e metadados.
+   * @returns {Object} - Dados do arquivo após o upload.
+   */
+  async upload(file, options = {}) {
+    try {
+      const { folder, metadata } = options;
+      const fileKey = folder ? `${folder}/${file.originalname}` : file.originalname;
+
+      // Upload do arquivo original
+      await this.s3Client.send(new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: fileKey,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+        Metadata: metadata
+      }));
+
+      let thumbnailUrl = null;
+
+      // Se for uma imagem, cria uma thumbnail
+      if (file.mimetype.startsWith('image/')) {
+        const thumbnailBuffer = await sharp(file.buffer)
+          .resize(300, 300, { fit: 'inside' })
+          .toBuffer();
+
+        const thumbnailKey = `thumbnails/${fileKey}`;
+        await this.s3Client.send(new PutObjectCommand({
+          Bucket: this.bucketName,
+          Key: thumbnailKey,
+          Body: thumbnailBuffer,
+          ContentType: file.mimetype
+        }));
+
+        thumbnailUrl = `${process.env.S3_PUBLIC_URL}/${thumbnailKey}`;
+      }
+
+      // Obtém os metadados da imagem
+      let imageMetadata = {};
+      if (file.mimetype.startsWith('image/')) {
+        const imageMeta = await sharp(file.buffer).metadata();
+        imageMetadata = {
+          width: imageMeta.width,
+          height: imageMeta.height,
+          format: imageMeta.format
+        };
+      }
+
+      return {
+        url: `${process.env.S3_PUBLIC_URL}/${fileKey}`,
+        thumbnailUrl,
+        metadata: { ...metadata, ...imageMetadata },
+        ...imageMetadata,
+        size: file.size,
+        type: file.mimetype
+      };
+    } catch (error) {
+      logger.error('Storage upload failed:', error);
+      throw new StorageError('Falha ao fazer upload do arquivo');
     }
-    return photo;
   }
 
-  async getSessionPhotos(sessionId) {
-    return this.photoRepository.findBySession(sessionId);
+  /**
+   * Deleta um arquivo do S3.
+   * @param {string} fileUrl - URL do arquivo a ser deletado.
+   * @returns {Object} - Objeto indicando sucesso da operação.
+   */
+  async delete(fileUrl) {
+    try {
+      const fileKey = fileUrl.replace(`${process.env.S3_PUBLIC_URL}/`, '');
+      await this.s3Client.send(new DeleteObjectCommand({
+        Bucket: this.bucketName,
+        Key: fileKey
+      }));
+      return { success: true };
+    } catch (error) {
+      logger.error('Storage delete failed:', error);
+      throw new StorageError('Falha ao excluir arquivo');
+    }
   }
 
-  async updatePhoto(userId, photoId, updateData) {
-    const photo = await this.getPhotoById(photoId);
-    const session = await this.sessionRepository.findById(photo.sessionId);
-
-    if (session.createdBy !== userId) {
-      throw new UnauthorizedError('Você não tem permissão para editar esta foto');
+  /**
+   * Obtém o arquivo a partir do S3.
+   * @param {string} fileUrl - URL do arquivo a ser obtido.
+   * @returns {Stream} - Corpo do arquivo.
+   */
+  async getFileStream(fileUrl) {
+    try {
+      const fileKey = fileUrl.replace(`${process.env.S3_PUBLIC_URL}/`, '');
+      const response = await this.s3Client.send(new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: fileKey
+      }));
+      return response.Body;
+    } catch (error) {
+      logger.error('Storage get failed:', error);
+      throw new StorageError('Falha ao obter arquivo');
     }
-
-    return this.photoRepository.update(photoId, updateData);
-  }
-
-  async deletePhoto(userId, photoId) {
-    const photo = await this.getPhotoById(photoId);
-    const session = await this.sessionRepository.findById(photo.sessionId);
-
-    if (session.createdBy !== userId) {
-      throw new UnauthorizedError('Você não tem permissão para excluir esta foto');
-    }
-
-    // Remove do storage
-    await this.storageService.delete(photo.photoUrl);
-    if (photo.thumbnailUrl) {
-      await this.storageService.delete(photo.thumbnailUrl);
-    }
-
-    // Remove do banco de dados
-    await this.photoRepository.delete(photoId);
-
-    // Se era a foto de capa, atualiza a sessão
-    if (session.coverPhotoUrl === photo.photoUrl) {
-      const newCover = await this.photoRepository.findFirstBySession(photo.sessionId);
-      await this.sessionRepository.update(photo.sessionId, {
-        coverPhotoUrl: newCover ? newCover.photoUrl : null
-      });
-    }
-
-    return { success: true };
   }
 }
 
-module.exports = new PhotoService();
+module.exports = new StorageService();

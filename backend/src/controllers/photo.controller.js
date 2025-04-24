@@ -3,7 +3,7 @@ const { validationResult } = require('express-validator');
 const logger = require('../utils/logger');
 
 class PhotoController {
-  async upload(req, res, next) {
+  async uploadPhoto(req, res, next) {
     try {
       if (!req.file) {
         return res.status(400).json({
@@ -25,6 +25,22 @@ class PhotoController {
       });
     } catch (error) {
       logger.error(`Upload photo failed for user ${req.user.userId}: ${error.message}`);
+      next(error);
+    }
+  }
+
+  async getPublishedPhotos(req, res, next) {
+    try {
+      // Recupera todas as fotos publicadas
+      const photos = await photoService.getPublishedPhotos();
+
+      // Resposta com as fotos publicadas
+      res.json({
+        success: true,
+        photos
+      });
+    } catch (error) {
+      logger.error(`Get published photos failed: ${error.message}`);
       next(error);
     }
   }
@@ -73,6 +89,44 @@ class PhotoController {
     }
   }
 
+  async downloadPhoto(req, res, next) {
+    try {
+      const photoId = req.params.id;
+      
+      // Recupera a foto pelo ID
+      const photo = await photoService.getPhotoById(photoId);
+
+      if (!photo) {
+        return res.status(404).json({
+          success: false,
+          message: 'Foto não encontrada'
+        });
+      }
+
+      // Verificar se o usuário tem permissão para acessar a foto
+      if (photo.userId !== req.user.userId && !req.user.hasPermission('download_all_photos')) {
+        return res.status(403).json({
+          success: false,
+          message: 'Você não tem permissão para baixar esta foto'
+        });
+      }
+
+      // Chama o serviço para fazer o download da foto
+      const fileStream = await photoService.getFileStream(photo.id);
+
+      // Configura os headers para o download
+      res.setHeader('Content-Disposition', `attachment; filename="${photo.originalname}"`);
+      res.setHeader('Content-Type', photo.mimetype);
+      
+      // Envia o arquivo como resposta
+      fileStream.pipe(res);
+
+    } catch (error) {
+      logger.error(`Download photo failed for user ${req.user.userId}: ${error.message}`);
+      next(error);
+    }
+  }
+  
   async update(req, res, next) {
     try {
       const errors = validationResult(req);

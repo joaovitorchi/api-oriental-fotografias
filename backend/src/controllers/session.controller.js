@@ -3,7 +3,7 @@ const { validationResult } = require('express-validator');
 const logger = require('../utils/logger');
 
 class SessionController {
-  async create(req, res, next) {
+  async createSession(req, res, next) {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -25,7 +25,43 @@ class SessionController {
     }
   }
 
-  async getById(req, res, next) {
+  async getSessionPhotos(req, res, next) {
+    try {
+      const { sessionId } = req.params;
+
+      // Recupera as fotos da sessão
+      const photos = await photoService.getSessionPhotos(sessionId);
+
+      if (!photos || photos.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Nenhuma foto encontrada para esta sessão'
+        });
+      }
+
+      // Verificar se o usuário tem permissão para acessar as fotos da sessão
+      const userHasPermission = photos.some(photo => 
+        photo.userId === req.user.userId || req.user.hasPermission('view_all_photos')
+      );
+
+      if (!userHasPermission) {
+        return res.status(403).json({
+          success: false,
+          message: 'Você não tem permissão para visualizar as fotos desta sessão'
+        });
+      }
+
+      res.json({
+        success: true,
+        photos
+      });
+    } catch (error) {
+      logger.error(`Get session photos failed for user ${req.user.userId}: ${error.message}`);
+      next(error);
+    }
+  }
+
+  async getSessionById(req, res, next) {
     try {
       const session = await sessionService.getSessionById(req.params.id);
       
@@ -47,7 +83,7 @@ class SessionController {
     }
   }
 
-  async getPublished(req, res, next) {
+  async getPublishedSessions(req, res, next) {
     try {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
@@ -69,7 +105,7 @@ class SessionController {
     }
   }
 
-  async update(req, res, next) {
+  async updateSession(req, res, next) {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -113,7 +149,7 @@ class SessionController {
     }
   }
 
-  async delete(req, res, next) {
+  async deleteSession(req, res, next) {
     try {
       await sessionService.deleteSession(
         req.user.userId,

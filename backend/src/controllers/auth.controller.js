@@ -98,6 +98,42 @@ class AuthController {
       next(error);
     }
   }
+
+  async updateUser(req, res, next) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+  
+      const { id } = req.params;
+      const updatedUser = await authService.updateUser(id, req.body);
+  
+      res.json({
+        success: true,
+        user: updatedUser
+      });
+    } catch (error) {
+      logger.error(`Update user failed: ${error.message}`);
+      next(error);
+    }
+  }
+
+  async deleteUser(req, res, next) {
+    try {
+      const { id } = req.params;
+      await authService.deleteUser(id);
+  
+      res.json({
+        success: true,
+        message: 'Usuário excluído com sucesso'
+      });
+    } catch (error) {
+      logger.error(`Delete user failed: ${error.message}`);
+      next(error);
+    }
+  }
+  
 }
 
 module.exports = new AuthController();

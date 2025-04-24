@@ -16,7 +16,7 @@ router.post('/register', validator(registerSchema), authController.register);
 // Rotas protegidas (requerem autenticação)
 router.use(authMiddleware());  // Aplica o middleware de autenticação para todas as rotas abaixo
 router.get('/me', authController.getProfile);
-router.put('/me', validator(registerSchema), authController.updateProfile);
+router.put('/me', validator(registerSchema), authController.updateUser);
 router.post('/change-password', validator(changePasswordSchema), authController.changePassword);
 router.post('/refresh-token', authController.refreshToken);
 
@@ -28,7 +28,6 @@ router.use((req, res, next) => {
   next();
 });
 
-router.get('/users', authController.listUsers);
 router.put('/users/:id', validator(registerSchema), authController.updateUser);
 router.delete('/users/:id', authController.deleteUser);
 
