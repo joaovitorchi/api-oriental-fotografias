@@ -1,6 +1,6 @@
 const { Pool } = require('pg');
 const logger = require('../utils/logger');
-
+require('dotenv').config();
 class BaseRepository {
   constructor(tableName) {
     this.table = tableName;

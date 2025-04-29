@@ -1,28 +1,60 @@
-const express = require('express');
-const app = express();
-
-// Importar middlewares
-const errorHandler = require('./middlewares/error.middleware');
-const loggerMiddleware = require('./middlewares/logger.middleware');
-const authMiddleware = require('./middlewares/auth.middleware');
-const validatorMiddleware = require('./middlewares/validator.middleware');
-const corsMiddleware = require('./middlewares/cors.middleware');
-const compressionMiddleware = require('./middlewares/compression.middleware');
-
-// Aplicar middlewares globais
-app.use(express.json());          // Express JSON body parser
-app.use(corsMiddleware);          // Middleware de CORS (sem os parênteses)
-app.use(compressionMiddleware);   // Middleware de compressão (sem os parênteses)
-app.use(loggerMiddleware);        // Middleware de log (sem os parênteses)
-
-// Rota protegida com autenticação
-app.use('/api', authMiddleware, require('./routes'));  // Middleware de autenticação sem parênteses
-
-// Middleware de erro (deve ser o último)
-app.use(errorHandler);
-
-// Iniciar servidor
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
+require("dotenv").config({
+  path: ".env",
 });
+
+const express = require("express");
+const compression = require("compression");
+const cors = require("cors");
+const swaggerFile = require("../swagger");
+const swaggerUI = require("swagger-ui-express");
+const swaggerJSDOC = require("swagger-jsdoc");
+const path = require("path");
+const bodyParser = require("body-parser");
+
+const createAdmin = require("./scripts/create-admin");  // Importando o script create-admin
+
+class AppController {
+  constructor() {
+    this.express = express();
+    this.middlewares();
+    this.routes();
+  }
+
+  middlewares() {
+    this.express.use(compression());
+    this.express.use(cors());
+    this.express.use(express.json());
+    this.express.use(
+      bodyParser.json({ type: "application/vnd.api+json", strict: false })
+    );
+    const specs = swaggerJSDOC(swaggerFile);
+    this.express.use("/doc", swaggerUI.serve, swaggerUI.setup(specs));
+    this.express.use(express.static(path.join(__dirname, "../", "build")));
+  }
+
+  routes() {
+    this.express.use("/api/v1", require("./routes/index"));
+    this.express.use("/api/v1", require("./routes/auth.routes"));
+    this.express.use("/api/v1/client", require("./routes/client.routes"));
+    this.express.use("/api/v1/category", require("./routes/category.routes"));
+    this.express.use("/api/v1/album", require("./routes/album.routes"));
+    this.express.use("/api/v1/instagram", require("./routes/instagram.routes"));
+    this.express.use("/api/v1/photo", require("./routes/photo.routes"));
+    this.express.use("/api/v1/session", require("./routes/session.routes"));
+    /** React */
+    this.express.get("/*", (req, res) => {
+      res.sendFile(path.join(__dirname, "../", "build", "index.html"));
+    });
+  }
+}
+
+// Executando o script para criar o admin ao iniciar o servidor
+createAdmin()
+  .then(() => {
+    console.log("Admin criado com sucesso!");
+  })
+  .catch((error) => {
+    console.error("Erro ao criar o admin:", error);
+  });
+
+module.exports = new AppController().express;
