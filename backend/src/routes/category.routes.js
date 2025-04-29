@@ -5,25 +5,25 @@ const validator = require('../middlewares/validator.middleware');
 const { categorySchema } = require('../validations/category.validation');
 
 // Rotas públicas
-router.get('/', categoryController.getAllCategories);
-router.get('/:slug', categoryController.getCategoryBySlug);
+router.get('/', categoryController.getAll);
+router.get('/:slug', categoryController.getBySlug);
 
 // Rotas autenticadas
 router.post(
   '/', 
   validator(categorySchema),
-  categoryController.createCategory
+  categoryController.create
 );
 
 router.put(
   '/:id', 
   validator(categorySchema),
-  categoryController.updateCategory
+  categoryController.update
 );
 
 router.delete(
   '/:id', 
-  categoryController.deleteCategory
+  categoryController.delete
 );
 
 module.exports = router;

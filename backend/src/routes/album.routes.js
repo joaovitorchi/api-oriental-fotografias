@@ -4,31 +4,31 @@ const albumController = require('../controllers/album.controller');
 const validator = require('../middlewares/validator.middleware');
 const { albumSchema } = require('../validations/album.validation');
 
-// Rotas para clientes (com verificação de token)
+// Rotas para clientes (públicas)
 router.get('/shared/:token', albumController.getSharedAlbum);
-router.post('/shared/:token/verify', albumController.verifyAlbumPassword);
+router.post('/shared/:token/verify', albumController.verifyPassword);
 
 // Rotas autenticadas
 router.post(
   '/', 
   validator(albumSchema),
-  albumController.createAlbum
+  albumController.create
 );
 
 router.get(
   '/my-albums', 
-  albumController.getMyAlbums
+  albumController.getUserAlbums  // Corrigido: era getMyAlbums
 );
 
 router.get(
   '/:id', 
-  albumController.getAlbumById
+  albumController.getById        // Corrigido: era getAlbumById
 );
 
 router.put(
   '/:id', 
   validator(albumSchema),
-  albumController.updateAlbum
+  albumController.update
 );
 
 router.post(
@@ -43,12 +43,12 @@ router.post(
 
 router.post(
   '/:id/password',
-  albumController.setAlbumPassword
+  albumController.setPassword    // Corrigido: era setAlbumPassword
 );
 
 router.delete(
   '/:id', 
-  albumController.deleteAlbum
+  albumController.delete
 );
 
 module.exports = router;

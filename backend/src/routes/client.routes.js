@@ -10,32 +10,32 @@ router.post(
   '/', 
   authMiddleware(),
   validator(clientSchema),
-  clientController.createClient
+  clientController.create
 );
 
 router.get(
   '/search',
   authMiddleware(),
-  clientController.searchClients
+  clientController.search
 );
 
 router.get(
   '/:id',
   authMiddleware(),
-  clientController.getClientById
+  clientController.getById
 );
 
 router.put(
   '/:id', 
   authMiddleware(),
   validator(clientSchema),
-  clientController.updateClient
+  clientController.update
 );
 
 router.delete(
   '/:id', 
   authMiddleware(),
-  clientController.deleteClient
+  clientController.delete
 );
 
 module.exports = router;

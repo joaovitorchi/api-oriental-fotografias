@@ -1,5 +1,5 @@
 const BaseRepository = require('./base.repository');
-const { InstagramPost } = require('../models');
+const { InstagramPost } = require('../models/instagrampost.model');
 
 class InstagramRepository extends BaseRepository {
   constructor() {
